@@ -1,0 +1,54 @@
+appId: local.course-downloader.app
+productName: Course Downloader
+executableName: course-downloader
+copyright: Course Downloader
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+  - build/icon.png
+  - '!**/*.map'
+extraResources:
+  # Optional: `npm run fetch-binaries` puts a pinned yt-dlp here for offline installs.
+  # Otherwise the app downloads yt-dlp to ~/.config/Course Downloader/bin on first start.
+  - from: resources/bin
+    to: bin
+    filter: ['**/*']
+asar: true
+
+linux:
+  syncDesktopName: true
+  target: [rpm, AppImage]
+  category: Network
+  icon: build/icons
+  synopsis: Download videos, playlists and full online courses
+  description: Course Downloader downloads single videos, playlists and complete online courses (deeplearning.ai, Udemy, YouTube and 1800+ sites via yt-dlp).
+  desktop:
+    entry:
+      Name: Course Downloader
+      GenericName: Course & Video Downloader
+      Categories: Network;FileTransfer;
+      Keywords: download;course;video;youtube;deeplearning;udemy;
+      StartupWMClass: course-downloader
+
+rpm:
+  # ffmpeg from RPM Fusion, or Fedora's ffmpeg-free; either works for remuxing.
+  depends: ['(ffmpeg or ffmpeg-free)']
+  fpm: ['--rpm-rpmbuild-define=_build_id_links none']
+
+deb:
+  depends: [ffmpeg]
+
+appImage:
+  artifactName: Course-Downloader-${version}-${arch}.AppImage
+
+# Configured for later releases (build on the target OS).
+win:
+  target: nsis
+  icon: build/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

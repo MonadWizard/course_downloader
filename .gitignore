@@ -1,0 +1,9 @@
+node_modules/
+out/
+dist/
+release/
+resources/bin/*
+!resources/bin/.gitkeep
+graphify-out/cache/
+*.log
+.DS_Store
