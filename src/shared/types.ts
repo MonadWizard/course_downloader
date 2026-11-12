@@ -49,12 +49,18 @@ export interface SubtitleTrack {
 export interface MediaSource {
   /** Manifest / file / page URL handed to the downloader. */
   url: string
-  kind: 'hls' | 'dash' | 'file' | 'ytdlp' | 'text'
+  kind: 'hls' | 'dash' | 'file' | 'ytdlp' | 'text' | 'files'
   headers?: Record<string, string>
   subtitles?: SubtitleTrack[]
   /** For kind === 'text': the content to write (reading materials). */
   text?: string
   textExt?: 'html' | 'md' | 'txt'
+  /** For kind === 'files': files to write into the item's folder ("name" may contain sub-folders). */
+  files?: { name: string; data: string | Uint8Array }[]
+  /** 'course': files belong to the whole course and are saved once to "<Course>/Lab files". */
+  filesScope?: 'course' | 'item'
+  /** Sub-folder inside "<Course>/Lab files" for course-scoped files. */
+  filesSubdir?: string
   durationSec?: number
 }
 
@@ -152,6 +158,7 @@ export interface RendererApi {
   retryJob(id: string): Promise<void>
   removeJob(id: string): Promise<void>
   clearFinished(): Promise<void>
+  retryAllFailed(): Promise<number>
   openPath(path: string): Promise<void>
   getSettings(): Promise<Settings>
   saveSettings(s: Partial<Settings>): Promise<Settings>

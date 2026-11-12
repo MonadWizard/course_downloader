@@ -74,3 +74,40 @@ describe('deeplearning.ai', () => {
     expect(src.text).toContain('How tracing works')
   })
 })
+
+import { mapType, scanLabPayload } from '../src/main/extractors/deeplearningai'
+
+describe('deeplearning.ai video + notebook lessons', () => {
+  it('treats video_notebook lessons as videos', () => {
+    expect(mapType('video_notebook')).toBe('video')
+    expect(mapType('notebook')).toBe('notebook')
+    expect(mapType('graded_notebook')).toBe('notebook')
+  })
+  it('resolves a stored "notebook" job of a video_notebook lesson as video (retry of old jobs)', async () => {
+    const item = { id: 'cxr0v', index: 8, title: 'Building multi-agent systems', type: 'notebook' as const, data: { lessonType: 'video_notebook', videoId: 10173265, programId: 1 } }
+    const c: any = {
+      siteId: 'deeplearningai', loggedIn: false, log: () => {}, ytdlp: async () => '',
+      fetch: async () => new Response(JSON.stringify({ result: { data: { json: video } } }))
+    }
+    const src = await deeplearningai.resolve(item, c)
+    expect(src.kind).toBe('hls')
+  })
+  it('sends {materialId} to getReadingMaterial', async () => {
+    let seen = ''
+    const c: any = {
+      siteId: 'deeplearningai', loggedIn: true, log: () => {}, ytdlp: async () => '',
+      fetch: async (u: string) => {
+        seen = decodeURIComponent(u)
+        return new Response(JSON.stringify({ result: { data: { json: { content: '<p>Some long reading material text here</p>' } } } }))
+      }
+    }
+    const item = courseToItems(course, course.slug).find((i) => i.type === 'reading')!
+    await deeplearningai.resolve(item, c)
+    expect(seen).toContain('"materialId"')
+  })
+  it('finds notebooks and lab URLs in a lab payload', () => {
+    const r = scanLabPayload({ url: 'https://lab.example/user/x/lab/tree/L1.ipynb?token=abc', saveNotebook: { content: '{"cells":[],"nbformat":4}', name: 'L1.ipynb' } })
+    expect(r.urls[0]).toMatch(/token=abc/)
+    expect(r.notebooks).toHaveLength(1)
+  })
+})

@@ -60,9 +60,9 @@
     "semantic_hash": ""
   },
   "src/main/engine.ts": {
-    "mtime": 1794510659.008205,
-    "seen": 1794510708.1686337,
-    "ast_hash": "8f3e1db9d8b93dda621a5b059af98c40",
+    "mtime": 1794512767.1177545,
+    "seen": 1794512798.4454255,
+    "ast_hash": "e58f2da10039c8cc453160c58a89f265",
     "semantic_hash": ""
   },
   "src/main/extractors/crawler.ts": {
@@ -72,9 +72,9 @@
     "semantic_hash": ""
   },
   "src/main/extractors/deeplearningai.ts": {
-    "mtime": 1794509373.4817748,
-    "seen": 1794510149.3486395,
-    "ast_hash": "7075141bb1756c5860f06a12fb9c21b7",
+    "mtime": 1794512743.0706818,
+    "seen": 1794512798.4454296,
+    "ast_hash": "ee5546a2207b9bdde1d5a12a0103c512",
     "semantic_hash": ""
   },
   "src/main/extractors/index.ts": {
@@ -84,9 +84,9 @@
     "semantic_hash": ""
   },
   "src/main/extractors/types.ts": {
-    "mtime": 1794509336.389428,
-    "seen": 1794510149.3486407,
-    "ast_hash": "8ae94f4fc48c5e87458ed02f94144073",
+    "mtime": 1794512743.069167,
+    "seen": 1794512798.4454327,
+    "ast_hash": "f0782a2880c7d9d706f4dbd89a94dd1f",
     "semantic_hash": ""
   },
   "src/main/extractors/udemy.ts": {
@@ -102,9 +102,9 @@
     "semantic_hash": ""
   },
   "src/main/index.ts": {
-    "mtime": 1794511188.3693957,
-    "seen": 1794511244.3981922,
-    "ast_hash": "2d84decdf0daceffc7501e62ad9f84f5",
+    "mtime": 1794512062.283027,
+    "seen": 1794512184.4254181,
+    "ast_hash": "f99d00269b4665ed7f46379947a76012",
     "semantic_hash": ""
   },
   "src/main/sniffer.ts": {
@@ -126,9 +126,9 @@
     "semantic_hash": ""
   },
   "src/preload/index.ts": {
-    "mtime": 1794511188.3690858,
-    "seen": 1794511244.3982,
-    "ast_hash": "42d7b0eb96583ebb26a145a1db776553",
+    "mtime": 1794512062.282495,
+    "seen": 1794512184.4254224,
+    "ast_hash": "47a25385de09affab4874cf1fe39a6ee",
     "semantic_hash": ""
   },
   "src/renderer/src/App.tsx": {
@@ -144,9 +144,9 @@
     "semantic_hash": ""
   },
   "src/renderer/src/pages/Downloads.tsx": {
-    "mtime": 1794511188.3702774,
-    "seen": 1794511244.3982038,
-    "ast_hash": "47a1bb63046b3a26bf2d2177c36b2547",
+    "mtime": 1794512062.283424,
+    "seen": 1794512184.425427,
+    "ast_hash": "a2d4b916ec5f9992ca15303db6be4d69",
     "semantic_hash": ""
   },
   "src/renderer/src/pages/Home.tsx": {
@@ -174,9 +174,9 @@
     "semantic_hash": ""
   },
   "src/shared/types.ts": {
-    "mtime": 1794511188.3688247,
-    "seen": 1794511244.3982077,
-    "ast_hash": "f21974e2ac39528c2a630685c64a1a64",
+    "mtime": 1794512743.068837,
+    "seen": 1794512798.4454567,
+    "ast_hash": "2b678e85434e600882d707e7f2d65d94",
     "semantic_hash": ""
   },
   "tests/crawler.test.ts": {
@@ -186,9 +186,9 @@
     "semantic_hash": ""
   },
   "tests/deeplearningai.test.ts": {
-    "mtime": 1794509799.4921403,
-    "seen": 1794510149.3486533,
-    "ast_hash": "5a90989f88c89df5560408e4da1871e8",
+    "mtime": 1794512062.2866018,
+    "seen": 1794512184.4254346,
+    "ast_hash": "1914a99979b1f0f41746c129e9ed6c41",
     "semantic_hash": ""
   },
   "tests/drm.test.ts": {

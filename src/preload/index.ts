@@ -15,6 +15,7 @@ const api: RendererApi = {
   retryJob: invoke('retryJob') as RendererApi['retryJob'],
   removeJob: invoke('removeJob') as RendererApi['removeJob'],
   clearFinished: invoke('clearFinished') as RendererApi['clearFinished'],
+  retryAllFailed: invoke('retryAllFailed') as RendererApi['retryAllFailed'],
   openPath: invoke('openPath') as RendererApi['openPath'],
   getSettings: invoke('getSettings') as RendererApi['getSettings'],
   saveSettings: invoke('saveSettings') as RendererApi['saveSettings'],

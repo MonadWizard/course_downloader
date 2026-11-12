@@ -2,12 +2,12 @@
   "0": "extractors/index.ts",
   "1": "package.json",
   "2": "electron-builder.yml",
-  "3": "main/index.ts",
+  "3": "binaries.ts",
   "4": "shared/types.ts",
   "5": "engine.ts",
   "6": "RendererApi",
   "7": "engine.ts",
-  "8": "sniffer.ts",
+  "8": "deeplearningai.ts",
   "9": "compilerOptions",
   "10": "compilerOptions",
   "11": "CourseGrab",
@@ -22,5 +22,9 @@
   "20": "aidlc-status.md",
   "21": "build-installer.md",
   "22": "new-extractor.md",
-  "24": "browserCookies.ts"
+  "23": "udemy.ts",
+  "24": "browserCookies.ts",
+  "25": "sniffer.ts",
+  "26": "Extractor",
+  "27": "MediaItem"
 }

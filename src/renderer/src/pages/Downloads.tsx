@@ -29,6 +29,11 @@ export function DownloadsPage({ jobs }: { jobs: Job[] }) {
           <button className="btn small" onClick={() => window.api.openPath('')}>
             Open folder
           </button>
+          {jobs.some((j) => ['error', 'skipped', 'login-required'].includes(j.status)) && (
+            <button className="btn small" onClick={() => window.api.retryAllFailed()}>
+              Retry all failed
+            </button>
+          )}
           <button className="btn small" onClick={() => window.api.clearFinished()}>
             Clear finished
           </button>

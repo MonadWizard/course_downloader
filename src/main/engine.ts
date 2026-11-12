@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Collection, Job, MediaSource, Settings } from '@shared/types'
-import { relativeOutBase } from '@shared/naming'
+import { relativeOutBase, sanitize } from '@shared/naming'
 import { ffmpegPath, ytdlpPath } from './binaries'
 import { makeContext, type Logger } from './context'
 import { AuthRequiredError, extractorById, SkipError } from './extractors'
@@ -61,11 +61,26 @@ function fmtEta(s?: number): string {
   return m ? `${m}m ${Math.floor(s % 60)}s` : `${Math.floor(s)}s`
 }
 
+/** Write files into "<outBase> - files/" (sub-folders allowed, no path escapes). Returns the folder. */
+export function writeFiles(outBase: string, files: { name: string; data: string | Uint8Array }[], dirOverride?: string): string {
+  const dir = dirOverride ?? `${outBase} - files`
+  for (const f of files) {
+    const rel = f.name.split(/[\\/]+/).filter((p) => p && p !== '.' && p !== '..')
+    if (!rel.length) continue
+    const target = join(dir, ...rel)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, f.data)
+  }
+  return dir
+}
+
 export class Engine {
   private procs = new Map<string, ChildProcess>()
   private active = new Set<string>()
   private emitTimer: NodeJS.Timeout | null = null
   private stopping = false
+  /** Course groups whose shared lab files were already saved in this run. */
+  private courseFilesDone = new Set<string>()
   /** When set, only jobs of this group are started (used by the CLI). */
   scope: string | null = null
 
@@ -122,9 +137,9 @@ export class Engine {
         createdAt: Date.now(),
         updatedAt: Date.now()
       }
-      if (item.type === 'notebook' || item.type === 'quiz') {
+      if (item.type === 'quiz') {
         job.status = 'skipped'
-        job.message = item.type === 'quiz' ? 'Quiz – not downloadable' : 'Lab notebook – open on the website'
+        job.message = 'Quiz – not downloadable'
       } else if (item.type === 'reading' && !settings.saveReadings) {
         job.status = 'skipped'
         job.message = 'Readings disabled in settings'
@@ -154,6 +169,12 @@ export class Engine {
   private async run(job: Job): Promise<void> {
     const existing = findOutput(job.outBase)
     if (existing) {
+      // Video already on disk – still fetch shared course lab files once if they're missing.
+      const ext = extractorById(job.extractor)
+      if (ext.extras && ext.extrasScope === 'course' && !existsSync(join(this.courseFilesDir(job), sanitize(ext.extrasSubdir ?? 'Labs')))) {
+        this.update(job, { status: 'resolving', message: 'Fetching lab files…' }, true)
+        await this.extras(job, await makeContext(job.siteId, this.log))
+      }
       this.update(job, { status: 'done', progress: 1, message: existing }, true)
       return
     }
@@ -166,6 +187,7 @@ export class Engine {
       this.update(job, { status: 'downloading', message: undefined }, true)
       const out = await this.download(job, src, ctx)
       await this.subtitles(job, src, ctx)
+      await this.extras(job, ctx)
       this.update(job, { status: 'done', progress: 1, speed: undefined, eta: undefined, message: out }, true)
     } catch (e) {
       const cur = load().jobs.find((j) => j.id === job.id)
@@ -185,6 +207,13 @@ export class Engine {
       const file = `${job.outBase}.${src.textExt ?? 'html'}`
       writeFileSync(file, src.text ?? '')
       return file
+    }
+    if (src.kind === 'files') {
+      if (src.filesScope === 'course') {
+        if (src.filesSubdir === 'Labs') this.courseFilesDone.add(job.groupId)
+        return writeFiles(job.outBase, src.files ?? [], join(this.courseFilesDir(job), sanitize(src.filesSubdir ?? 'Labs')))
+      }
+      return writeFiles(job.outBase, src.files ?? [])
     }
     if (ytdlpPath()) {
       try {
@@ -302,6 +331,28 @@ export class Engine {
     })
   }
 
+  private courseFilesDir(job: Job): string {
+    return join(load().settings.outputDir, sanitize(job.groupTitle), 'Lab files')
+  }
+
+  /** Companion files (e.g. lesson notebook) – never fails the job. */
+  private async extras(job: Job, ctx: ExtractorContext): Promise<void> {
+    const ext = extractorById(job.extractor)
+    if (!ext.extras) return
+    const courseScope = ext.extrasScope === 'course'
+    if (courseScope && this.courseFilesDone.has(job.groupId)) return
+    try {
+      const files = await ext.extras(job.item, ctx)
+      if (files.length) {
+        if (courseScope) this.courseFilesDone.add(job.groupId)
+        const dir = writeFiles(job.outBase, files, courseScope ? join(this.courseFilesDir(job), sanitize(ext.extrasSubdir ?? 'Labs')) : undefined)
+        this.log(`[${job.item.title}] saved ${files.length} notebook file(s) to ${dir}`)
+      }
+    } catch (e) {
+      this.log(`[${job.item.title}] notebook not downloaded: ${(e as Error).message}`)
+    }
+  }
+
   private async subtitles(job: Job, src: MediaSource, ctx: ExtractorContext): Promise<void> {
     if (!load().settings.subtitles || !src.subtitles?.length) return
     for (const s of src.subtitles) {
@@ -333,6 +384,20 @@ export class Engine {
     const db = load()
     db.jobs = db.jobs.filter((j) => j.id !== id)
     this.changed(true)
+  }
+
+  /** Re-queue every errored / skipped / login-required job (e.g. after an app update). */
+  retryAllFailed(): number {
+    let n = 0
+    for (const j of this.jobs) {
+      if (['error', 'skipped', 'login-required'].includes(j.status)) {
+        Object.assign(j, { status: 'queued', message: undefined, progress: 0 })
+        n++
+      }
+    }
+    this.changed(true)
+    this.pump()
+    return n
   }
 
   clearFinished(): void {

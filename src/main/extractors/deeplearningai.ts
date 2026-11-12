@@ -1,5 +1,6 @@
+import { sanitize } from '@shared/naming'
 import type { Collection, DownloadMode, ItemType, MediaItem, MediaSource, SubtitleTrack } from '@shared/types'
-import { AuthRequiredError, SkipError, type Extractor, type ExtractorContext } from './types'
+import { AuthRequiredError, SkipError, type ExtraFile, type Extractor, type ExtractorContext } from './types'
 
 /**
  * learn.deeplearning.ai
@@ -25,6 +26,7 @@ interface DlaiLesson {
   accessControl?: string
   requiredUserTier?: string | null
   readingMaterialId?: string | null
+  programId?: number | null
 }
 
 interface DlaiCourse {
@@ -50,8 +52,9 @@ export function parseCourseSlug(u: URL): { slug: string; lessonId?: string } | n
   return null
 }
 
-function mapType(t: string): ItemType {
-  if (t === 'video') return 'video'
+export function mapType(t: string): ItemType {
+  // "video_notebook" = video with a Jupyter notebook side by side → download the video (+ notebook as extra).
+  if (t === 'video' || t.startsWith('video')) return 'video'
   if (t === 'reading_material') return 'reading'
   if (t.includes('notebook')) return 'notebook'
   if (t === 'quiz') return 'quiz'
@@ -124,6 +127,8 @@ export function courseToItems(course: DlaiCourse, slug: string): MediaItem[] {
       locked: lesson.accessControl !== undefined && lesson.accessControl !== 'full',
       data: {
         lessonType: lesson.type,
+        courseId: course.courseId,
+        programId: lesson.programId ?? null,
         videoId: lesson.videoId,
         readingMaterialId: lesson.readingMaterialId ?? null,
         tier: lesson.requiredUserTier ?? null
@@ -175,6 +180,138 @@ export function readingToSource(payload: unknown, title: string): MediaSource {
   return { url: '', kind: 'text', text, textExt: isHtml ? 'html' : 'md' }
 }
 
+/** Short description of a JSON payload's shape for the activity log (no values). */
+export function shapeOf(o: unknown, depth = 0): string {
+  if (Array.isArray(o)) return `[${o.length ? shapeOf(o[0], depth + 1) : ''}]`
+  if (o && typeof o === 'object') {
+    if (depth > 2) return '{…}'
+    return `{${Object.entries(o)
+      .slice(0, 15)
+      .map(([k, v]) => `${k}:${shapeOf(v, depth + 1)}`)
+      .join(',')}}`
+  }
+  return typeof o
+}
+
+function safeRel(path: string): string {
+  return path
+    .split(/[\\/]+/)
+    .filter((p) => p && p !== '.' && p !== '..')
+    .join('/')
+}
+
+/** Inline notebooks ({cells:[…]}) and URLs anywhere inside a payload. */
+export function scanLabPayload(o: unknown): { notebooks: { name?: string; nb: unknown }[]; urls: string[] } {
+  const notebooks: { name?: string; nb: unknown }[] = []
+  const urls: string[] = []
+  const walk = (v: unknown, key?: string, parent?: any): void => {
+    if (typeof v === 'string') {
+      if (/^https?:\/\//.test(v)) urls.push(v)
+      else if (v.trimStart().startsWith('{') && v.includes('"cells"')) {
+        try {
+          const nb = JSON.parse(v)
+          if (Array.isArray(nb?.cells)) notebooks.push({ name: parent?.name ?? parent?.path ?? key, nb })
+        } catch {
+          /* not JSON */
+        }
+      }
+    } else if (Array.isArray(v)) v.forEach((x) => walk(x, key, parent))
+    else if (v && typeof v === 'object') {
+      const obj = v as any
+      if (Array.isArray(obj.cells) && (obj.nbformat || obj.metadata)) notebooks.push({ name: parent?.name ?? parent?.path ?? key, nb: obj })
+      else for (const [k, x] of Object.entries(obj)) walk(x, k, obj)
+    }
+  }
+  walk(o)
+  return { notebooks, urls }
+}
+
+/** Download notebook + files from a Jupyter server via its contents API. */
+async function jupyterFiles(ctx: ExtractorContext, labUrl: string): Promise<ExtraFile[]> {
+  const u = new URL(labUrl)
+  const token = u.searchParams.get('token')
+  const m = /^(.*?)\/(lab|tree|notebooks|voila|edit)(\/|$)/.exec(u.pathname)
+  const base = `${u.origin}${(m ? m[1] : u.pathname).replace(/\/$/, '')}`
+  const q = (extra = ''): string => `?content=1${extra}${token ? `&token=${encodeURIComponent(token)}` : ''}`
+  const files: ExtraFile[] = []
+  let total = 0
+  const get = async (path: string, extra = ''): Promise<any> => {
+    const res = await ctx.fetch(`${base}/api/contents/${path.split('/').map(encodeURIComponent).join('/')}${q(extra)}`, {
+      headers: { accept: 'application/json' }
+    })
+    if (!res.ok) throw new Error(`Jupyter contents HTTP ${res.status}`)
+    return res.json()
+  }
+  const walk = async (path: string, depth: number): Promise<void> => {
+    const dir = await get(path)
+    for (const e of dir?.content ?? []) {
+      if (!e?.name || e.name.startsWith('.') || e.name === '__pycache__') continue
+      if (e.type === 'directory' && depth < 3) await walk(e.path, depth + 1)
+      else if (e.type === 'notebook') {
+        const nb = await get(e.path)
+        files.push({ name: safeRel(e.path), data: JSON.stringify(nb.content, null, 1) })
+      } else if (e.type === 'file' && (e.size ?? 0) < 50e6 && total < 300e6) {
+        const f = await get(e.path, '&format=base64&type=file')
+        const buf = Buffer.from(String(f.content ?? ''), f.format === 'base64' ? 'base64' : 'utf8')
+        total += buf.length
+        files.push({ name: safeRel(e.path), data: buf })
+      }
+    }
+  }
+  await walk('', 0)
+  return files
+}
+
+/** Notebook (and its data files) of a lesson. Requires login. */
+export async function fetchNotebookFiles(item: MediaItem, ctx: ExtractorContext): Promise<ExtraFile[]> {
+  const d = item.data ?? {}
+  if (!d.programId) return []
+  if (!ctx.loggedIn) throw new AuthRequiredError(SITE, 'Log in to download lesson notebooks')
+  // The web app sends userId -1 (server uses the session) and polls while the lab container starts.
+  let lab: unknown
+  for (let attempt = 1; ; attempt++) {
+    try {
+      lab = await trpc<unknown>(ctx, 'course.getProgramLab', { programAssignmentId: d.programId, courseId: d.courseId, userId: -1 })
+      if ((lab as any)?.url || attempt >= 24) break
+    } catch (e) {
+      if (e instanceof AuthRequiredError || attempt >= 24) throw e
+    }
+    if (attempt === 1) ctx.log(`notebook "${item.title}": waiting for the lab to start…`)
+    await new Promise((r) => setTimeout(r, 5000))
+  }
+  ctx.log(`notebook "${item.title}": lab response ${shapeOf(lab)}`)
+  const { notebooks, urls } = scanLabPayload(lab)
+  const files: ExtraFile[] = notebooks.map((n, i) => ({
+    name: safeRel(String(n.name ?? '')).replace(/\.ipynb$/, '') ? `${safeRel(String(n.name)).replace(/\.ipynb$/, '')}.ipynb` : `notebook${i ? `-${i + 1}` : ''}.ipynb`,
+    data: JSON.stringify(n.nb, null, 1)
+  }))
+  if (files.length) return files
+  for (const url of urls) {
+    try {
+      const got = await jupyterFiles(ctx, url)
+      if (got.length) return got
+    } catch (e) {
+      ctx.log(`notebook "${item.title}": ${url.split('?')[0]} → ${(e as Error).message}`)
+    }
+  }
+  return []
+}
+
+/**
+ * Jobs saved by older app versions may lack fields (courseId, programId…).
+ * Re-read the course outline once and refresh the item's data in place.
+ */
+async function freshItemData(item: MediaItem, ctx: ExtractorContext): Promise<Record<string, any>> {
+  const d = (item.data ?? {}) as Record<string, any>
+  if ('programId' in d && 'courseId' in d) return d
+  const parsed = item.url ? parseCourseSlug(new URL(item.url)) : null
+  if (!parsed) return d
+  const course = await trpc<DlaiCourse>(ctx, 'course.getCourseBySlug', { courseSlug: parsed.slug })
+  const fresh = course?.lessons ? courseToItems(course, parsed.slug).find((i) => i.id === item.id) : undefined
+  if (fresh?.data) item.data = { ...d, ...fresh.data }
+  return (item.data ?? d) as Record<string, any>
+}
+
 export const deeplearningai: Extractor = {
   id: 'deeplearningai',
   name: 'DeepLearning.AI',
@@ -206,17 +343,42 @@ export const deeplearningai: Extractor = {
     }
   },
 
+  // The lab is one Jupyter workspace per course (all modules' notebooks + data).
+  extrasScope: 'course',
+  extrasSubdir: 'Labs',
+
+  async extras(item: MediaItem, ctx: ExtractorContext): Promise<ExtraFile[]> {
+    // Companion notebook of a "video_notebook" lesson (only when logged in).
+    if (!item.data?.videoId || !item.data?.programId || !ctx.loggedIn) return []
+    return fetchNotebookFiles(item, ctx)
+  },
+
   async resolve(item: MediaItem, ctx: ExtractorContext): Promise<MediaSource> {
-    const d = item.data ?? {}
-    if (item.type === 'video' && d.videoId) {
+    const d = await freshItemData(item, ctx)
+    if (d.videoId) {
       const video = await trpc<any>(ctx, 'course.getLessonVideo', { videoId: d.videoId })
       return videoToSource(video)
     }
-    if (item.type === 'reading' && d.readingMaterialId) {
-      const r = await trpc<unknown>(ctx, 'course.getReadingMaterial', { readingMaterialId: d.readingMaterialId })
+    if (d.readingMaterialId) {
+      const r = await trpc<unknown>(ctx, 'course.getReadingMaterial', { materialId: d.readingMaterialId })
       return readingToSource(r, item.title)
     }
-    if (item.type === 'notebook') throw new SkipError('Lab notebook (hosted Jupyter) – open it on the website')
+    if (d.programId) {
+      const graded = String(d.lessonType).startsWith('graded')
+      let files: ExtraFile[]
+      try {
+        files = await fetchNotebookFiles(item, ctx)
+      } catch (e) {
+        if (graded && !(e instanceof AuthRequiredError)) {
+          throw new SkipError(`Graded lab not accessible (${(e as Error).message}) – its notebook is usually in the course "Lab files" folder`)
+        }
+        throw e
+      }
+      if (!files.length) throw new SkipError('Notebook files not available (open the lab once on the website, then retry)')
+      // Graded labs each have their own workspace (same file names) → own folder.
+      // Ungraded labs share one course workspace → "Labs".
+      return { url: '', kind: 'files', files, filesScope: 'course', filesSubdir: graded ? sanitize(item.title.replace(/:\s*/, ' - ')) : 'Labs' }
+    }
     if (item.type === 'quiz') throw new SkipError('Quiz – not downloadable')
     throw new SkipError(`Unsupported lesson type: ${String(d.lessonType)}`)
   }

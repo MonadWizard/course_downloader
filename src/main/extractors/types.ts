@@ -49,6 +49,12 @@ export interface ExtractorContext {
   log(msg: string): void
 }
 
+/** A companion file saved next to a lesson (notebook, data file…). `name` may contain "/" sub-folders. */
+export interface ExtraFile {
+  name: string
+  data: string | Buffer
+}
+
 export interface Extractor {
   id: string
   /** Human readable platform name. */
@@ -60,4 +66,10 @@ export interface Extractor {
   loginUrl(url: URL): string
   analyze(url: string, mode: DownloadMode, ctx: ExtractorContext): Promise<Collection>
   resolve(item: MediaItem, ctx: ExtractorContext): Promise<MediaSource>
+  /** Optional companion files for an item (e.g. the notebook next to a video). Failures are non-fatal. */
+  extras?(item: MediaItem, ctx: ExtractorContext): Promise<ExtraFile[]>
+  /** 'course': extras are shared by the whole course (saved once to "<Course>/Lab files"). */
+  extrasScope?: 'course' | 'item'
+  /** Sub-folder inside "<Course>/Lab files" for course-scoped extras. */
+  extrasSubdir?: string
 }

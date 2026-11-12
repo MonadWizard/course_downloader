@@ -106,6 +106,7 @@ function registerIpc(): void {
   ipcMain.handle('retryJob', (_e, id: string) => engine.resume(id))
   ipcMain.handle('removeJob', (_e, id: string) => engine.remove(id))
   ipcMain.handle('clearFinished', () => engine.clearFinished())
+  ipcMain.handle('retryAllFailed', () => engine.retryAllFailed())
   ipcMain.handle('openPath', async (_e, p: string) => {
     if (existsSync(p)) shell.showItemInFolder(p)
     else await shell.openPath(load().settings.outputDir)
