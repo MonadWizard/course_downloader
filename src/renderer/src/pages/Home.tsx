@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { LoginButton } from '../components/LoginButton'
 import type { AnalyzeResponse, Collection, DownloadMode, MediaItem } from '@shared/types'
 
 const TYPE_ICON: Record<MediaItem['type'], string> = { video: '▶', reading: '📄', notebook: '🧪', quiz: '❓', other: '•' }
@@ -35,10 +36,6 @@ export function HomePage({ onQueued }: { onQueued: () => void }) {
     }
   }
 
-  async function loginAndRetry(siteId: string): Promise<void> {
-    await window.api.login(siteId)
-    await analyze(mode)
-  }
 
   async function download(): Promise<void> {
     if (!result?.ok) return
@@ -114,12 +111,14 @@ export function HomePage({ onQueued }: { onQueued: () => void }) {
           {result.loginRequired && (
             <div className="row">
               <span>
-                This content needs you to be logged in to <b>{result.loginRequired.siteName}</b>. A browser window will open – log in, then{' '}
-                <b>close that window</b> and Course Downloader will retry automatically.
+                This content needs you to be logged in to <b>{result.loginRequired.siteName}</b>. The site opens in your own browser – log in
+                there and Course Downloader picks up the session and retries automatically.
               </span>
-              <button className="btn primary" onClick={() => loginAndRetry(result.loginRequired!.siteId)}>
-                Login to {result.loginRequired.siteName}
-              </button>
+              <LoginButton
+                siteId={result.loginRequired.siteId}
+                siteName={result.loginRequired.siteName}
+                onDone={() => analyze(mode)}
+              />
             </div>
           )}
         </div>
@@ -143,9 +142,7 @@ export function HomePage({ onQueued }: { onQueued: () => void }) {
           {col.loginSuggested && (
             <div className="banner">
               {lockedCount} item(s) are locked for anonymous users.
-              <button className="btn small" onClick={() => loginAndRetry(col.siteId)}>
-                Login to unlock
-              </button>
+              <LoginButton siteId={col.siteId} siteName={col.siteName} label="Login to unlock" className="btn small" onDone={() => analyze(mode)} />
             </div>
           )}
 

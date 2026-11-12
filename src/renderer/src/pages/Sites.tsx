@@ -1,34 +1,40 @@
 import { useEffect, useState } from 'react'
-import type { SiteInfo } from '@shared/types'
+import type { LoginMethodInfo, SiteInfo } from '@shared/types'
+import { LoginButton } from '../components/LoginButton'
 
 export function SitesPage() {
   const [sites, setSites] = useState<SiteInfo[]>([])
   const [custom, setCustom] = useState('')
+  const [how, setHow] = useState<LoginMethodInfo | null>(null)
   const refresh = (): void => void window.api.listSites().then(setSites)
-  useEffect(refresh, [])
-
-  async function login(idOrUrl: string): Promise<void> {
-    await window.api.login(idOrUrl)
+  useEffect(() => {
     refresh()
-  }
+    window.api.loginMethod().then(setHow)
+  }, [])
 
   return (
     <div className="page">
       <h1>Sites &amp; logins</h1>
       <p className="muted">
-        Each site gets its own private browser profile stored on this computer. Logins persist until you log out. Your password is never
-        stored by Course Downloader – only the site’s session cookies.
+        <b>Login</b> opens the site in your own browser{how?.browserId ? ` (${how.browserLabel})` : ''}, so Google / social sign-in works.
+        After you log in there, Course Downloader copies only that site’s session into its own private profile. Your password is never seen
+        or stored. Change the browser in Settings.
       </p>
       <div className="card">
         {sites.map((s) => (
-          <div key={s.id} className="row between site">
+          <div key={s.id} className="site row between">
             <div>
               <b>{s.name}</b> <span className="muted">{s.loginUrl}</span>
             </div>
             <div className="row">
               <span className={`status ${s.loggedIn ? 's-done' : 's-queued'}`}>{s.loggedIn ? 'Logged in' : 'Not logged in'}</span>
-              <button className="btn small" onClick={() => login(s.id)}>
-                {s.loggedIn ? 'Open / re-login' : 'Login'}
+              <LoginButton siteId={s.id} siteName={s.name} label={s.loggedIn ? 'Re-login' : 'Login'} className="btn small" onDone={refresh} />
+              <button
+                className="btn small ghost"
+                title="Email/password login inside the app (Google sign-in is blocked there)"
+                onClick={() => window.api.login(s.id, 'app-window').then(refresh)}
+              >
+                App window
               </button>
               {s.loggedIn && (
                 <button className="btn small ghost" onClick={() => window.api.logout(s.id).then(refresh)}>
@@ -43,9 +49,9 @@ export function SitesPage() {
         <h2>Log in to another site</h2>
         <div className="urlbar">
           <input placeholder="https://www.example-course-site.com/login" value={custom} onChange={(e) => setCustom(e.target.value)} />
-          <button className="btn primary" disabled={!custom} onClick={() => login(custom)}>
-            Login
-          </button>
+          {/^https?:\/\//.test(custom) && (
+            <LoginButton siteId={custom} siteName={(() => { try { return new URL(custom).hostname } catch { return 'site' } })()} label="Login" onDone={refresh} />
+          )}
         </div>
       </div>
     </div>

@@ -2,7 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AnalyzeRequest, AnalyzeResponse, EnqueueRequest, Settings } from '@shared/types'
-import { ensureSite, isLoggedIn, listSites, logout, openLoginWindow } from './auth'
+import { cancelLogin, confirmLogin, ensureSite, isLoggedIn, listSites, loginWithBrowser, logout, openLoginWindow } from './auth'
+import { defaultBrowserId, detectBrowsers } from './browserCookies'
+import type { LoginMethodInfo, LoginResult } from '@shared/types'
 import { ensureYtDlp, installYtDlp, status as binaryStatus } from './binaries'
 import { makeContext } from './context'
 import { Engine } from './engine'
@@ -25,6 +27,26 @@ function siteFor(url: URL): { id: string; name: string; loginUrl: string } {
   const ext = primaryExtractor(url)
   const id = ext.siteId(url)
   return { id, name: ext === ytdlpExtractor ? url.hostname.replace(/^www\./, '') : ext.name, loginUrl: ext.loginUrl(url) }
+}
+
+function siteRecord(siteIdOrUrl: string) {
+  const known = load().sites[siteIdOrUrl]
+  if (known) return known
+  const s = siteFor(new URL(siteIdOrUrl))
+  return ensureSite(s.id, s.name, s.loginUrl)
+}
+
+async function loginMethod(): Promise<LoginMethodInfo> {
+  const pref = load().settings.loginBrowser || 'default'
+  const browsers = detectBrowsers()
+  const def = await defaultBrowserId()
+  const label = (id: string | null): string => browsers.find((b) => b.id === id)?.label ?? id ?? 'app window'
+  if (pref === 'app-window') return { browserId: null, browserLabel: 'app window', defaultBrowserId: def }
+  const id = pref === 'default' ? def : pref
+  if (id && browsers.some((b) => b.id === id)) return { browserId: id, browserLabel: label(id), defaultBrowserId: def }
+  // Unknown/unsupported default browser: fall back to the first installed one.
+  const first = browsers[0]?.id ?? null
+  return { browserId: first, browserLabel: label(first), defaultBrowserId: def }
 }
 
 function createWindow(): void {
@@ -56,6 +78,7 @@ function registerIpc(): void {
     } catch {
       return { ok: false, error: 'That does not look like a valid URL.' }
     }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false, error: 'Only http(s) links are supported.' }
     const site = siteFor(u)
     ensureSite(site.id, site.name, site.loginUrl)
     try {
@@ -102,17 +125,27 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('listSites', () => listSites())
-  ipcMain.handle('login', async (_e, siteIdOrUrl: string) => {
-    let rec = load().sites[siteIdOrUrl]
-    if (!rec) {
-      const s = siteFor(new URL(siteIdOrUrl))
-      rec = ensureSite(s.id, s.name, s.loginUrl)
+  ipcMain.handle('loginMethod', () => loginMethod())
+  ipcMain.handle('login', async (_e, siteIdOrUrl: string, method: 'auto' | 'app-window' = 'auto'): Promise<LoginResult> => {
+    const rec = siteRecord(siteIdOrUrl)
+    const how = method === 'app-window' ? { browserId: null, browserLabel: 'app window' } : await loginMethod()
+    let outcome: { ok: boolean; message: string }
+    if (how.browserId) {
+      log(`Opening ${rec.loginUrl} in ${how.browserLabel} – waiting for the login session…`)
+      outcome = await loginWithBrowser(rec, how.browserId)
+    } else {
+      await openLoginWindow(rec, win ?? undefined)
+      outcome = (await isLoggedIn(rec.id)) ? { ok: true, message: 'Logged in.' } : { ok: false, message: 'Login window closed.' }
     }
-    await openLoginWindow(rec, win ?? undefined)
-    engine.retryLoginRequired(rec.id)
-    return { id: rec.id, name: rec.name, loginUrl: rec.loginUrl, loggedIn: await isLoggedIn(rec.id) }
+    log(`${rec.name}: ${outcome.message}`)
+    const loggedIn = await isLoggedIn(rec.id)
+    if (outcome.ok || loggedIn) engine.retryLoginRequired(rec.id)
+    return { ...outcome, ok: outcome.ok || loggedIn, site: { id: rec.id, name: rec.name, loginUrl: rec.loginUrl, loggedIn } }
   })
+  ipcMain.handle('confirmLogin', (_e, siteId: string) => confirmLogin(siteRecord(siteId).id))
+  ipcMain.handle('cancelLogin', (_e, siteId: string) => cancelLogin(siteRecord(siteId).id))
   ipcMain.handle('logout', (_e, siteId: string) => logout(siteId))
+  ipcMain.handle('detectBrowsers', () => detectBrowsers())
 
   ipcMain.handle('binaryStatus', () => binaryStatus())
   ipcMain.handle('installYtDlp', async () => {

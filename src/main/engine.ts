@@ -14,6 +14,18 @@ import { BROWSER_UA } from './auth'
 const MEDIA_EXT = ['.mp4', '.mkv', '.webm', '.m4a', '.mp3', '.mov']
 const TEXT_EXT = ['.html', '.md', '.txt']
 
+/** Only http(s) URLs may reach yt-dlp/ffmpeg (blocks option injection and file:/other protocols). */
+export function assertHttpUrl(raw: string): string {
+  let u: URL
+  try {
+    u = new URL(raw)
+  } catch {
+    throw new Error(`Invalid media URL: ${raw}`)
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error(`Refusing non-http(s) media URL: ${u.protocol}`)
+  return u.href
+}
+
 export function formatSelector(q: Settings['quality']): string {
   if (q === 'best') return 'bv*+ba/b'
   return `bv*[height<=${q}]+ba/b[height<=${q}]/bv*+ba/b`
@@ -218,7 +230,7 @@ export class Engine {
       args.push('--user-agent', BROWSER_UA)
     }
     if (subs) args.push('--write-subs', '--sub-langs', 'en.*,en', '--convert-subs', 'srt')
-    args.push(src.url)
+    args.push('--', assertHttpUrl(src.url))
 
     return new Promise((resolve, reject) => {
       const p = spawn(ytdlpPath()!, args, { stdio: ['ignore', 'pipe', 'pipe'] })
@@ -269,7 +281,7 @@ export class Engine {
       .join('')
     const args = ['-y', '-nostats', '-progress', 'pipe:1', '-user_agent', BROWSER_UA]
     if (headers) args.push('-headers', headers)
-    args.push('-i', src.url, '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', `${out}.part.mp4`)
+    args.push('-i', assertHttpUrl(src.url), '-c', 'copy', '-bsf:a', 'aac_adtstoasc', '-movflags', '+faststart', `${out}.part.mp4`)
     const duration = src.durationSec ?? job.item.durationSec ?? 0
     return new Promise((resolve, reject) => {
       const p = spawn(ff, args, { stdio: ['ignore', 'pipe', 'pipe'] })

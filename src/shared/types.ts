@@ -94,6 +94,21 @@ export interface Settings {
   saveReadings: boolean
   /** Include notebook / quiz placeholders? (they are skipped, just listed) */
   autoUpdateYtDlp: boolean
+  /** How to log in: 'default' = system default browser, a browser id, or 'app-window'. */
+  loginBrowser: string
+}
+
+export interface LoginResult {
+  ok: boolean
+  message: string
+  site: SiteInfo
+}
+
+export interface LoginMethodInfo {
+  /** Browser actually used for login, null → in-app window. */
+  browserId: string | null
+  browserLabel: string
+  defaultBrowserId: string | null
 }
 
 export interface SiteInfo {
@@ -101,6 +116,11 @@ export interface SiteInfo {
   name: string
   loginUrl: string
   loggedIn: boolean
+}
+
+export interface BrowserProfile {
+  id: string
+  label: string
 }
 
 export interface BinaryStatus {
@@ -137,8 +157,13 @@ export interface RendererApi {
   saveSettings(s: Partial<Settings>): Promise<Settings>
   chooseOutputDir(): Promise<string | null>
   listSites(): Promise<SiteInfo[]>
-  login(siteIdOrUrl: string): Promise<SiteInfo>
+  /** Opens the login in the user's browser (or app window) and resolves when logged in / cancelled. */
+  login(siteIdOrUrl: string, method?: 'auto' | 'app-window'): Promise<LoginResult>
+  confirmLogin(siteId: string): Promise<void>
+  cancelLogin(siteId: string): Promise<void>
+  loginMethod(): Promise<LoginMethodInfo>
   logout(siteId: string): Promise<void>
+  detectBrowsers(): Promise<BrowserProfile[]>
   binaryStatus(): Promise<BinaryStatus>
   installYtDlp(): Promise<BinaryStatus>
   onJobsChanged(cb: (jobs: Job[]) => void): () => void

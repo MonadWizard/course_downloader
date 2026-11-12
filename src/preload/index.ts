@@ -21,7 +21,11 @@ const api: RendererApi = {
   chooseOutputDir: invoke('chooseOutputDir') as RendererApi['chooseOutputDir'],
   listSites: invoke('listSites') as RendererApi['listSites'],
   login: invoke('login') as RendererApi['login'],
+  confirmLogin: invoke('confirmLogin') as RendererApi['confirmLogin'],
+  cancelLogin: invoke('cancelLogin') as RendererApi['cancelLogin'],
+  loginMethod: invoke('loginMethod') as RendererApi['loginMethod'],
   logout: invoke('logout') as RendererApi['logout'],
+  detectBrowsers: invoke('detectBrowsers') as RendererApi['detectBrowsers'],
   binaryStatus: invoke('binaryStatus') as RendererApi['binaryStatus'],
   installYtDlp: invoke('installYtDlp') as RendererApi['installYtDlp'],
   onJobsChanged: (cb) => {

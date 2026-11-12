@@ -65,7 +65,7 @@ export const ytdlpExtractor: Extractor = {
     if (mode === 'single') args.push('--no-playlist')
     else args.push('--flat-playlist', '--yes-playlist')
     if (ctx.cookiesFile) args.push('--cookies', ctx.cookiesFile)
-    args.push(url)
+    args.push('--', url)
     let out: string
     try {
       out = await ctx.ytdlp(args)

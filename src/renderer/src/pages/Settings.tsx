@@ -1,17 +1,25 @@
 import { useEffect, useState } from 'react'
-import type { BinaryStatus, Settings } from '@shared/types'
+import type { BinaryStatus, BrowserProfile, LoginMethodInfo, Settings } from '@shared/types'
 
 export function SettingsPage({ log }: { log: string[] }) {
   const [s, setS] = useState<Settings | null>(null)
   const [bin, setBin] = useState<BinaryStatus | null>(null)
   const [installing, setInstalling] = useState(false)
+  const [browsers, setBrowsers] = useState<BrowserProfile[]>([])
+  const [how, setHow] = useState<LoginMethodInfo | null>(null)
 
   useEffect(() => {
     window.api.getSettings().then(setS)
     window.api.binaryStatus().then(setBin)
+    window.api.detectBrowsers().then(setBrowsers)
+    window.api.loginMethod().then(setHow)
   }, [])
 
-  const patch = async (p: Partial<Settings>): Promise<void> => setS(await window.api.saveSettings(p))
+  const patch = async (p: Partial<Settings>): Promise<void> => {
+    setS(await window.api.saveSettings(p))
+    window.api.loginMethod().then(setHow)
+  }
+  const defLabel = browsers.find((b) => b.id === how?.defaultBrowserId)?.label
   if (!s) return null
 
   return (
@@ -32,6 +40,22 @@ export function SettingsPage({ log }: { log: string[] }) {
               Change…
             </button>
           </div>
+        </label>
+        <label>
+          Log in with
+          <select value={s.loginBrowser} onChange={(e) => patch({ loginBrowser: e.target.value })}>
+            <option value="default">System default browser{defLabel ? ` (${defLabel})` : ''}</option>
+            {browsers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.label}
+              </option>
+            ))}
+            <option value="app-window">Window inside the app (email/password only)</option>
+          </select>
+          <span className="small">
+            Login opens the site in {how?.browserId ? how.browserLabel : 'an app window'}; after you sign in there (Google works), the site’s
+            session is copied into Course Downloader.
+          </span>
         </label>
         <label>
           Video quality

@@ -20,15 +20,27 @@ export function runYtdlp(args: string[]): Promise<string> {
   })
 }
 
+/** true when url's hostname is `domain` or a subdomain of it (https only). */
+export function isHostOf(url: string, domain: string): boolean {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' && (u.hostname === domain || u.hostname.endsWith(`.${domain}`))
+  } catch {
+    return false
+  }
+}
+
 /** Build the session-aware context an extractor works with. */
 export async function makeContext(siteId: string, log: Logger): Promise<ExtractorContext> {
   const ses = siteSession(siteId)
   const loggedIn = await isLoggedIn(siteId)
   const cookiesFile = loggedIn ? await exportCookies(siteId) : undefined
   const extraHeaders: Record<string, string> = {}
+  let authHost: string | null = null
   if (siteId === 'udemy') {
     const token = await getCookie(siteId, 'access_token')
     if (token) {
+      authHost = 'udemy.com'
       extraHeaders.Authorization = `Bearer ${token}`
       extraHeaders['X-Udemy-Authorization'] = `Bearer ${token}`
     }
@@ -40,7 +52,10 @@ export async function makeContext(siteId: string, log: Logger): Promise<Extracto
     log,
     fetch: (url, init) => {
       const headers = new Headers(init?.headers)
-      for (const [k, v] of Object.entries(extraHeaders)) if (!headers.has(k)) headers.set(k, v)
+      // Site credentials (e.g. Udemy bearer token) only go to that site's own hosts.
+      if (authHost && isHostOf(url, authHost)) {
+        for (const [k, v] of Object.entries(extraHeaders)) if (!headers.has(k)) headers.set(k, v)
+      }
       // session.fetch sends the site's cookies, like the real browser would.
       return ses.fetch(url, { ...init, headers, credentials: 'include' } as RequestInit)
     },

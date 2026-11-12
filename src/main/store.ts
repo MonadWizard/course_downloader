@@ -31,7 +31,8 @@ export function defaultSettings(): Settings {
     quality: 'best',
     subtitles: true,
     saveReadings: true,
-    autoUpdateYtDlp: true
+    autoUpdateYtDlp: true,
+    loginBrowser: 'default'
   }
 }
 

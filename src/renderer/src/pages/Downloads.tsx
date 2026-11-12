@@ -1,4 +1,5 @@
 import type { Job } from '@shared/types'
+import { LoginButton } from '../components/LoginButton'
 
 const STATUS_LABEL: Record<Job['status'], string> = {
   queued: 'Queued',
@@ -37,9 +38,7 @@ export function DownloadsPage({ jobs }: { jobs: Job[] }) {
       {loginSites.map((s) => (
         <div key={s} className="banner">
           Some downloads from <b>{s}</b> need a login.
-          <button className="btn small primary" onClick={() => window.api.login(s)}>
-            Login &amp; retry
-          </button>
+          <LoginButton siteId={s} siteName={s} label="Login & retry" className="btn small primary" />
         </div>
       ))}
 
@@ -89,9 +88,7 @@ export function DownloadsPage({ jobs }: { jobs: Job[] }) {
                       </button>
                     )}
                     {j.status === 'login-required' && (
-                      <button className="btn tiny primary" onClick={() => window.api.login(j.siteId)}>
-                        Login
-                      </button>
+                      <LoginButton siteId={j.siteId} siteName={j.siteId} label="Login" className="btn tiny primary" />
                     )}
                     {j.status === 'done' && (
                       <button className="btn tiny" onClick={() => window.api.openPath(j.message ?? '')}>
